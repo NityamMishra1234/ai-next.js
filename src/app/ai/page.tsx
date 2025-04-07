@@ -7,6 +7,15 @@ import { Button } from '@mui/material';
 import MicIcon from '@mui/icons-material/Mic';
 import StopIcon from '@mui/icons-material/Stop';
 
+declare global {
+  interface Window {
+    SpeechRecognition: typeof SpeechRecognition;
+    webkitSpeechRecognition: typeof SpeechRecognition;
+  }
+}
+
+type SpeechRecognition = any; // you could use the proper Web Speech API typings if installed
+
 type Message = {
   role: 'user' | 'assistant';
   text: string;
@@ -24,7 +33,7 @@ const cleanTextForVoice = (text: string): string => {
 const AIPage: React.FC = () => {
   const username = useSelector((state: RootState) => state.auth.user?.username);
   const [messages, setMessages] = useState<Message[]>([]);
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const recognitionRef = useRef<any>(null);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [typing, setTyping] = useState(false);
@@ -113,17 +122,14 @@ const AIPage: React.FC = () => {
       const songName = match[1].trim();
       const platform = match[2]?.toLowerCase();
 
-      if (platform?.includes('spotify')) {
-        const spotifyUrl = `https://open.spotify.com/search/${encodeURIComponent(songName)}`;
-        const newTab = window.open(spotifyUrl, '_blank');
-        if (!newTab) alert('Popup blocked! Please allow popups.');
-        speakText(`Opening ${songName} on Spotify`);
-      } else {
-        const youtubeUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(songName)}`;
-        const newTab = window.open(youtubeUrl, '_blank');
-        if (!newTab) alert('Popup blocked! Please allow popups.');
-        speakText(`Searching ${songName} on YouTube`);
-      }
+      const url =
+        platform?.includes('spotify')
+          ? `https://open.spotify.com/search/${encodeURIComponent(songName)}`
+          : `https://www.youtube.com/results?search_query=${encodeURIComponent(songName)}`;
+
+      const newTab = window.open(url, '_blank');
+      if (!newTab) alert('Popup blocked! Please allow popups.');
+      speakText(`Opening ${songName} on ${platform?.includes('spotify') ? 'Spotify' : 'YouTube'}`);
       return true;
     }
     return false;
@@ -131,20 +137,26 @@ const AIPage: React.FC = () => {
 
   const startListening = () => {
     const SpeechRecognition =
-      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) {
       alert('Speech Recognition not supported in this browser.');
       return;
     }
-
-    const recognition = new SpeechRecognition();
+    interface ExtendedSpeechRecognition extends SpeechRecognition {
+      maxAlternatives: number;
+    }
+    
+    const SpeechRecognitionConstructor =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    
+    const recognition = new SpeechRecognitionConstructor() as ExtendedSpeechRecognition;
     recognitionRef.current = recognition;
     recognition.lang = 'en-US';
     recognition.interimResults = false;
     recognition.maxAlternatives = 1;
     setIsListening(true);
 
-    recognition.onresult = async (event: any) => {
+    recognition.onresult = async (event: SpeechRecognitionEvent) => {
       setIsListening(false);
       const userText = event.results[0][0].transcript;
       setMessages((prev) => [...prev, { role: 'user', text: userText }]);

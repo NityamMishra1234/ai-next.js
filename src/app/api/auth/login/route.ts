@@ -1,7 +1,10 @@
 import { NextResponse } from 'next/server';
 import connectDB from '@/lib/utils/connectDB';
 import { loginUser } from '@/lib/controllers/authController';
-
+interface LoginRequest {
+  email: string;
+  password: string;
+}
 export async function POST(req: Request) {
   await connectDB();
 
