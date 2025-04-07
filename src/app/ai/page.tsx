@@ -1,25 +1,23 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useSelector } from 'react-redux';
 import { RootState } from '@/lib/store';
 import { Button } from '@mui/material';
 import MicIcon from '@mui/icons-material/Mic';
 import StopIcon from '@mui/icons-material/Stop';
 
-declare global {
-  interface Window {
-    SpeechRecognition: typeof SpeechRecognition;
-    webkitSpeechRecognition: typeof SpeechRecognition;
-  }
-}
-
-type SpeechRecognition = any; // you could use the proper Web Speech API typings if installed
-
 type Message = {
   role: 'user' | 'assistant';
   text: string;
 };
+
+
+type SpeechRecognitionEventType = SpeechRecognitionEvent;
+
+interface ExtendedSpeechRecognition extends SpeechRecognition {
+  maxAlternatives: number;
+}
 
 const cleanTextForVoice = (text: string): string => {
   const emojiRegex = /([\u2700-\u27BF]|[\uE000-\uF8FF]|[\uD83C-\uDBFF\uDC00-\uDFFF])/g;
@@ -33,130 +31,120 @@ const cleanTextForVoice = (text: string): string => {
 const AIPage: React.FC = () => {
   const username = useSelector((state: RootState) => state.auth.user?.username);
   const [messages, setMessages] = useState<Message[]>([]);
-  const recognitionRef = useRef<any>(null);
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [typing, setTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    const welcome = `Hello ${username}, how can I help you?`;
-    speakText(welcome);
-    setMessages((prev) => [...prev, { role: 'assistant', text: welcome }]);
-  }, [username]);
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
 
   useEffect(() => {
     scrollToBottom();
   }, [messages, typing]);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
-
-  const speakText = (text: string) => {
-    const clean = cleanTextForVoice(text);
-    const utterance = new SpeechSynthesisUtterance(clean);
-    utterance.lang = 'en-US';
-    setIsSpeaking(true);
-    utterance.onend = () => {
-      setIsSpeaking(false);
-      startListening();
-    };
-    window.speechSynthesis.speak(utterance);
-  };
-
-  const stopSpeaking = () => {
-    window.speechSynthesis.cancel();
-    setIsSpeaking(false);
-    startListening();
-  };
-
-  const handleFrontendCommands = (text: string): string | null => {
+  const handleFrontendCommands = useCallback((text: string): string | null => {
     const lower = text.toLowerCase();
-
+  
     if (lower.includes('scroll down')) {
       window.scrollBy({ top: 300, behavior: 'smooth' });
       return 'Scrolling down the page.';
     }
-
+  
     if (lower.includes('scroll up')) {
       window.scrollBy({ top: -300, behavior: 'smooth' });
       return 'Scrolling up the page.';
     }
-
+  
     if (lower.includes('go to') && lower.includes('about')) {
       window.location.href = '/about';
       return 'Opening the About page.';
     }
-
+  
     if (lower.includes('go to') && lower.includes('documentation')) {
       window.location.href = '/documentation';
       return 'Opening the Documentation page.';
     }
-
+  
     if (lower.includes('reload') || lower.includes('refresh')) {
       window.location.reload();
       return 'Reloading the page.';
     }
-
+  
     if (lower.includes('open instagram')) {
       window.open('https://www.instagram.com', '_blank');
       return 'Opening Instagram in a new tab.';
     }
-
+  
     if (lower.includes('tell me the time') || lower.includes("what's the time")) {
       const now = new Date();
       return `The current time is ${now.toLocaleTimeString()}`;
     }
-
+  
     if (lower.includes('create calendar event')) {
       return 'Calendar event creation is under development.';
     }
-
+  
     return null;
-  };
+  }, []);
+  
 
-  const handleMusicSearchCommand = (text: string) => {
+  const handleMusicSearchCommand = useCallback((text: string): boolean => {
     const match = text.match(/play (.+?) (on youtube|on spotify)?/i);
     if (match) {
       const songName = match[1].trim();
       const platform = match[2]?.toLowerCase();
 
-      const url =
-        platform?.includes('spotify')
-          ? `https://open.spotify.com/search/${encodeURIComponent(songName)}`
-          : `https://www.youtube.com/results?search_query=${encodeURIComponent(songName)}`;
+      const onDone = () => startListening();
 
-      const newTab = window.open(url, '_blank');
-      if (!newTab) alert('Popup blocked! Please allow popups.');
-      speakText(`Opening ${songName} on ${platform?.includes('spotify') ? 'Spotify' : 'YouTube'}`);
+      if (platform?.includes('spotify')) {
+        const spotifyUrl = `https://open.spotify.com/search/${encodeURIComponent(songName)}`;
+        const newTab = window.open(spotifyUrl, '_blank');
+        if (!newTab) alert('Popup blocked! Please allow popups.');
+        speakText(`Opening ${songName} on Spotify`, onDone);
+      } else {
+        const youtubeUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(songName)}`;
+        const newTab = window.open(youtubeUrl, '_blank');
+        if (!newTab) alert('Popup blocked! Please allow popups.');
+        speakText(`Searching ${songName} on YouTube`, onDone);
+      }
       return true;
     }
     return false;
-  };
+  }, []);
 
-  const startListening = () => {
-    const SpeechRecognition =
-      window.SpeechRecognition || window.webkitSpeechRecognition;
+  const speakText = useCallback((text: string, onDone?: () => void) => {
+    const clean = cleanTextForVoice(text);
+    const utterance = new SpeechSynthesisUtterance(clean);
+    utterance.lang = 'en-US';
+    window.speechSynthesis.cancel();
+    utterance.onend = () => {
+      if (onDone) onDone();
+    };
+    setIsSpeaking(true);
+    window.speechSynthesis.speak(utterance);
+  }, []);
+  
+
+  const startListening = useCallback(() => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+
     if (!SpeechRecognition) {
       alert('Speech Recognition not supported in this browser.');
       return;
     }
-    interface ExtendedSpeechRecognition extends SpeechRecognition {
-      maxAlternatives: number;
-    }
-    
-    const SpeechRecognitionConstructor =
-      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    
-    const recognition = new SpeechRecognitionConstructor() as ExtendedSpeechRecognition;
+
+    const recognition = new SpeechRecognition() as ExtendedSpeechRecognition;
     recognitionRef.current = recognition;
     recognition.lang = 'en-US';
     recognition.interimResults = false;
     recognition.maxAlternatives = 1;
     setIsListening(true);
 
-    recognition.onresult = async (event: SpeechRecognitionEvent) => {
+    recognition.onresult = async (event: SpeechRecognitionEventType) => {
       setIsListening(false);
       const userText = event.results[0][0].transcript;
       setMessages((prev) => [...prev, { role: 'user', text: userText }]);
@@ -166,7 +154,7 @@ const AIPage: React.FC = () => {
       const frontendResponse = handleFrontendCommands(userText);
       if (frontendResponse) {
         setMessages((prev) => [...prev, { role: 'assistant', text: frontendResponse }]);
-        speakText(frontendResponse);
+        speakText(frontendResponse, () => startListening());
         return;
       }
 
@@ -177,26 +165,38 @@ const AIPage: React.FC = () => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ text: userText }),
         });
-        const data = await res.json();
+        const data: { response: string } = await res.json();
         const responseText = data.response;
         setTyping(false);
         setMessages((prev) => [...prev, { role: 'assistant', text: responseText }]);
-        speakText(responseText);
+        speakText(responseText, () => startListening());
       } catch (error) {
         console.error('Error:', error);
         const fallback = "Sorry, I couldn't process your request.";
         setTyping(false);
         setMessages((prev) => [...prev, { role: 'assistant', text: fallback }]);
-        speakText(fallback);
+        speakText(fallback, () => startListening());
       }
     };
 
-    recognition.onerror = (event: any) => {
+    recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
       console.error('Recognition error:', event.error);
       setIsListening(false);
     };
 
     recognition.start();
+  }, [handleFrontendCommands, handleMusicSearchCommand]);
+
+  useEffect(() => {
+    const welcome = `Hello ${username}, how can I help you?`;
+    speakText(welcome, () => {});
+    setMessages((prev) => [...prev, { role: 'assistant', text: welcome }]);
+  }, [username]);
+
+  const stopSpeaking = () => {
+    window.speechSynthesis.cancel();
+    setIsSpeaking(false);
+    startListening();
   };
 
   return (

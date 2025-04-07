@@ -4,7 +4,7 @@ declare global {
     webkitSpeechRecognition: typeof SpeechRecognition;
   }
 
-  var SpeechRecognition: {
+  let SpeechRecognition: {
     new (): SpeechRecognition;
     prototype: SpeechRecognition;
   };
@@ -16,7 +16,7 @@ declare global {
     start(): void;
     stop(): void;
     onresult: (event: SpeechRecognitionEvent) => void;
-    onerror: (event: any) => void;
+    onerror: (event: SpeechRecognitionErrorEvent) => void; // You can define this below too
   }
 
   interface SpeechRecognitionEvent extends Event {
@@ -38,6 +38,12 @@ declare global {
     transcript: string;
     confidence: number;
   }
+
+  interface SpeechRecognitionErrorEvent extends Event {
+    error: string;
+  }
 }
+
+// type SpeechRecognitionType = typeof SpeechRecognition | typeof webkitSpeechRecognition;
 
 export {};
