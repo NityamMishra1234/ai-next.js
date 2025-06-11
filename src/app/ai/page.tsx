@@ -25,7 +25,7 @@ interface ExtendedSpeechRecognition extends SpeechRecognition {
 const cleanTextForVoice = (text: string): string => {
   const emojiRegex = /([\u2700-\u27BF]|[\uE000-\uF8FF]|[\uD83C-\uDBFF\uDC00-\uDFFF])/g;
   text = text.replace(emojiRegex, '');
-  text = text.replace(/\*{1,2}([^*]+)\*{1,2}/g, '$1');
+  text = text.replace(/\*{1,2}([^*]+)\*{1,2}/g, '$1','#');
   text = text.replace(/\[(.*?)\]\(.*?\)/g, '$1');
   text = text.replace(/\s+/g, ' ').trim();
   return text;
